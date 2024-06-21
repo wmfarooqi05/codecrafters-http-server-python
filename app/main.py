@@ -1,11 +1,11 @@
 import socket
 
-OK_RESP = "HTTP/1.1 200 OK\r\n"
+OK_RESP = b"HTTP/1.1 200 OK\r\n\r\n"
 ERROR_RESP = b"HTTP/1.1 404 Not Found\r\n\r\n"
 
 
 def get_content_header(string):
-    return f"Content-Type: text/plain\r\nContent-Length: {len(string)}\r\n\r\n{string}"
+    return f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {len(string)}\r\n\r\n{string}"
 
 
 def main():
@@ -26,11 +26,10 @@ def main():
         data = data[0].split(' ')[1]
 
         if data == "/":
-            connection.send(OK_RESP.encode())
+            connection.send(OK_RESP)
         elif data.find("/echo") != -1:
-            request_str = data.strip("/echo/")
-            resp = f"{OK_RESP}{get_content_header(request_str)}"
-            connection.sendall(resp.encode())
+            request_str = data.split("/echo/")[1]
+            connection.sendall(get_content_header(request_str).encode())
         else:
             connection.send(ERROR_RESP)
 
