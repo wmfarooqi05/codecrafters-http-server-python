@@ -4,8 +4,8 @@ OK_RESP = "HTTP/1.1 200 OK\r\n"
 ERROR_RESP = b"HTTP/1.1 404 Not Found\r\n\r\n"
 
 
-def get_content_header(data):
-    return f"Content-Type: text/plain\r\nContent-Length: {len(data)}\r\n\r\n{data}"
+def get_content_header(string):
+    return f"Content-Type: text/plain\r\nContent-Length: {len(string)}\r\n\r\n{string}"
 
 
 def main():
@@ -28,7 +28,7 @@ def main():
         if data == "/":
             connection.send(OK_RESP.encode())
         elif data.find("/echo") != -1:
-            request_str = data.split("/echo/")[1]
+            request_str = data.strip("/echo/")
             resp = f"{OK_RESP}{get_content_header(request_str)}"
             connection.sendall(resp.encode())
         else:
