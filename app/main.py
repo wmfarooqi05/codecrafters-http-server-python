@@ -5,7 +5,7 @@ ERROR_RESP = b"HTTP/1.1 404 Not Found\r\n\r\n"
 
 
 def get_content_header(data):
-    return f"Content-Type: text/plain\r\nContent-Length: {len(data)}\r\n\r\n{data}\n"
+    return f"Content-Type: text/plain\r\nContent-Length: {len(data)}\r\n\r\n{data}"
 
 
 def main():
