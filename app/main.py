@@ -11,7 +11,10 @@ def get_content_header(string):
 
 
 def get_streaming_header(string):
-    return f"HTTP/1.1 200 OK\r\nContent-Type: octet-stream\r\nContent-Length: {len(string)}\r\n\r\n{string}".encode()
+    return (
+        f"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {len(string)}\r\n\r\n{string}"
+        .encode()
+    )
 
 
 def parse_headers(data):
