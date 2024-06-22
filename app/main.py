@@ -8,6 +8,16 @@ def get_content_header(string):
     return f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {len(string)}\r\n\r\n{string}"
 
 
+def parse_headers(data):
+    headers = {}
+    lines = data.split('\r\n')
+    for line in lines:
+        if ': ' in line:
+            key, value = line.split(': ', 1)
+            headers[key] = value
+    return headers
+
+
 def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!")
@@ -18,18 +28,24 @@ def main():
 
     while True:
         connection, address = server_socket.accept()
-        data = connection.recv(1024).decode("utf-8").split('\r\n')
+        request_data = connection.recv(1024).decode("utf-8")
 
+        headers = parse_headers(request_data)
+
+        data = request_data.split('\r\n')
         if not data:
             break
 
-        data = data[0].split(' ')[1]
+        path = data[0].split(' ')[1]
 
-        if data == "/":
+        if path == "/":
             connection.send(OK_RESP)
-        elif data.find("/echo") != -1:
-            request_str = data.split("/echo/")[1]
+        elif path.startswith("/echo"):
+            request_str = path.split("/echo/")[1]
             connection.sendall(get_content_header(request_str).encode())
+        elif path.startswith("/user-agent"):
+            user_agent = headers['User-Agent']
+            connection.sendall(get_content_header(user_agent).encode())
         else:
             connection.send(ERROR_RESP)
 
