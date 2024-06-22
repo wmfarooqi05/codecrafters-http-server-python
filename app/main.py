@@ -8,11 +8,16 @@ ERROR_RESP = b"HTTP/1.1 404 Not Found\r\n\r\n"
 SUPPORTED_ENCODINGS = ["gzip"]
 
 
+def get_valid_encoding(encodings):
+    encodings = [item.strip() for item in encodings.split(',')]
+    return set(encodings).intersection(SUPPORTED_ENCODINGS)
+
+
 def get_content_header(string, content_type="text/plain", encoding=""):
     resp = "HTTP/1.1 200 OK\r\n"
     resp += f"Content-Type: {content_type}\r\n"
-    if encoding is not None and len(encoding) != 0 and encoding in SUPPORTED_ENCODINGS:
-        resp += f"Content-Encoding: {encoding}\r\n"
+    if encoding is not None and len(encoding) != 0 and len(get_valid_encoding(encoding)) > 0:
+        resp += f"Content-Encoding: {''.join(get_valid_encoding(encoding))}\r\n"
 
     resp += f"Content-Length: {len(string)}\r\n\r\n{string}"
     return resp.encode()
