@@ -5,9 +5,17 @@ import sys
 OK_RESP = b"HTTP/1.1 200 OK\r\n\r\n"
 ERROR_RESP = b"HTTP/1.1 404 Not Found\r\n\r\n"
 
+SUPPORTED_ENCODINGS = ["gzip"]
 
-def get_content_header(string):
-    return f"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {len(string)}\r\n\r\n{string}".encode()
+
+def get_content_header(string, content_type="text/plain", encoding=""):
+    resp = "HTTP/1.1 200 OK\r\n"
+    resp += f"Content-Type: {content_type}\r\n"
+    if encoding is not None and len(encoding) != 0 and encoding in SUPPORTED_ENCODINGS:
+        resp += f"Content-Encoding: {encoding}\r\n"
+
+    resp += f"Content-Length: {len(string)}\r\n\r\n{string}"
+    return resp.encode()
 
 
 def get_streaming_header(string):
@@ -60,7 +68,14 @@ def main():
                 connection.send(OK_RESP)
             elif path.startswith("/echo"):
                 request_str = path.split("/echo/")[1]
-                connection.sendall(get_content_header(request_str))
+                connection.sendall(
+                    get_content_header(
+                        request_str,
+                        headers.get('content-type', 'text/plain'),
+                        headers.get('accept-encoding', None)
+                    )
+                )
+
             elif path.startswith("/user-agent"):
                 user_agent = headers['user-agent']
                 connection.sendall(get_content_header(user_agent))
