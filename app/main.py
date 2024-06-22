@@ -1,137 +1,184 @@
-import os.path
+import os
 import socket
 import sys
 import gzip
+from typing import Dict, List, Set
 
 OK_RESP = b"HTTP/1.1 200 OK\r\n\r\n"
 ERROR_RESP = b"HTTP/1.1 404 Not Found\r\n\r\n"
 
-SUPPORTED_ENCODINGS = ["gzip"]
+SUPPORTED_ENCODINGS: List[str] = ["gzip"]
 
 
-def get_valid_encoding(encodings):
-    encodings = [item.strip() for item in encodings.split(',')]
-    return set(encodings).intersection(SUPPORTED_ENCODINGS)
+def get_valid_encoding(encodings: str) -> Set[str]:
+    encodings_list = [item.strip() for item in encodings.split(',')]
+    return set(encodings_list).intersection(SUPPORTED_ENCODINGS)
 
 
-def get_content_header(data, headers):
-    # resp = "HTTP/1.1 200 OK\r\n"
-    # resp += f"Content-Type: {content_type}\r\n"
-    # if encoding is not None and len(encoding) != 0 and len(get_valid_encoding(encoding)) > 0:
-    #     resp += f"Content-Encoding: {''.join(get_valid_encoding(encoding))}\r\n"
-    #
-    # resp += f"Content-Length: {len(string)}\r\n\r\n{string}"
-    # return resp.encode()
+def get_content_header(data: str, headers: Dict[str, str]) -> bytes:
+    """
+    Constructs HTTP headers and body for the response.
 
+    Args:
+        data (str): The response body data.
+        headers (Dict[str, str]): The request headers.
+
+    Returns:
+        bytes: The complete HTTP response.
+    """
     body = data.encode()
     extra_headers = []
     encoding = headers.get("accept-encoding")
-    if encoding is not None and "gzip" in {
-        s.strip() for s in encoding.split(",")
-    }:
+
+    if encoding and "gzip" in get_valid_encoding(encoding):
         body = gzip.compress(body)
         extra_headers.append(b"Content-Encoding: gzip\r\n")
 
-    return b"".join(
-        [
-            b"HTTP/1.1 200 OK",
-            b"\r\n",
-            *extra_headers,
-            b"Content-Type: text/plain\r\n",
-            b"Content-Length: %d\r\n" % len(body),
-            b"\r\n",
-            body,
-        ]
+    response = [
+        b"HTTP/1.1 200 OK\r\n",
+        *extra_headers,
+        b"Content-Type: text/plain\r\n",
+        b"Content-Length: %d\r\n" % len(body),
+        b"\r\n",
+        body,
+    ]
+
+    return b"".join(response)
+
+
+def get_streaming_header(content: str) -> bytes:
+    """
+    Constructs headers for streaming content.
+
+    Args:
+        content (str): The content to stream.
+
+    Returns:
+        bytes: The complete HTTP response.
+    """
+    response = (
+        f"HTTP/1.1 200 OK\r\n"
+        f"Content-Type: application/octet-stream\r\n"
+        f"Content-Length: {len(content)}\r\n\r\n"
+        f"{content}"
     )
+    return response.encode()
 
 
-def get_streaming_header(string):
-    return (
-        f"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {len(string)}\r\n\r\n{string}"
-        .encode()
-    )
+def create_directory(directory_path: str) -> None:
+    """
+    Creates a directory if it does not exist.
 
-
-def create_directory(directory_path):
+    Args:
+        directory_path (str): Path to the directory.
+    """
     if not os.path.exists(directory_path):
         os.makedirs(directory_path)
         print(f"Directory '{directory_path}' created.")
 
 
-def parse_headers(data):
+def parse_headers(data: str) -> Dict[str, str]:
+    """
+    Parses HTTP headers from the request data.
+
+    Args:
+        data (str): The raw request data.
+
+    Returns:
+        Dict[str, str]: A dictionary of headers.
+    """
     headers = {}
     lines = data.split('\r\n')
     for line in lines:
         if ': ' in line:
             key, value = line.split(': ', 1)
-            headers[f"{key}".lower()] = value
+            headers[key.lower()] = value
     return headers
 
 
-def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
+def handle_get_request(path: str, headers: Dict[str, str], connection: socket.socket) -> None:
+    """
+    Handles GET requests.
+
+    Args:
+        path (str): The request path.
+        headers (Dict[str, str]): The request headers.
+        connection (socket.socket): The client connection socket.
+    """
+    if path == "/":
+        connection.send(OK_RESP)
+    elif path.startswith("/echo"):
+        request_str = path.split("/echo/")[1]
+        connection.sendall(get_content_header(request_str, headers))
+    elif path.startswith("/user-agent"):
+        user_agent = headers.get('user-agent', '')
+        connection.sendall(get_content_header(user_agent, headers))
+    elif path.startswith('/files/') and sys.argv[1] == '--directory':
+        file_name = path.replace('/files/', '')
+        file_path = os.path.join(sys.argv[2], file_name)
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as file:
+                file_content = file.read()
+                connection.send(get_streaming_header(file_content))
+        else:
+            connection.sendall(ERROR_RESP)
+    else:
+        connection.send(ERROR_RESP)
+
+
+def handle_post_request(path: str, headers: Dict[str, str], body: str, connection: socket.socket) -> None:
+    """
+    Handles POST requests.
+
+    Args:
+        path (str): The request path.
+        headers (Dict[str, str]): The request headers.
+        body (str): The request body.
+        connection (socket.socket): The client connection socket.
+    """
+    if path.startswith('/files/') and sys.argv[1] == '--directory':
+        if headers.get('content-type') == "application/octet-stream" and headers.get('content-length'):
+            file_name = path.replace('/files/', '')
+            full_path = os.path.join(sys.argv[2], file_name)
+            create_directory(os.path.dirname(full_path))
+            with open(full_path, 'w') as file:
+                file.write(body)
+                connection.send(b'HTTP/1.1 201 Created\r\n\r\n')
+        else:
+            connection.send(ERROR_RESP)
+    else:
+        connection.send(ERROR_RESP)
+
+
+def main() -> None:
+    """
+    The main function to start the server.
+    """
     print("Logs from your program will appear here!")
 
-    # Uncomment this to pass the first stage
-    #
     server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
 
     while True:
         connection, address = server_socket.accept()
         request_data = connection.recv(1024).decode("utf-8")
 
+        if not request_data:
+            connection.close()
+            continue
+
         header_data, body = request_data.split('\r\n\r\n', 1)
         headers = parse_headers(header_data)
 
-        data = request_data.split('\r\n')
-        if not data:
-            break
-
-        request_method = data[0].split(' ')[0]
-        path = data[0].split(' ')[1]
+        request_line = header_data.split('\r\n')[0]
+        request_method, path, _ = request_line.split(' ')
 
         if request_method.upper() == "GET":
-            if path == "/":
-                connection.send(OK_RESP)
-            elif path.startswith("/echo"):
-                request_str = path.split("/echo/")[1]
-                connection.sendall(
-                    get_content_header(
-                        request_str,
-                        headers
-                    )
-                )
-
-            elif path.startswith("/user-agent"):
-                user_agent = headers['user-agent']
-                connection.sendall(get_content_header(user_agent, headers))
-            elif path.startswith('/files/') and sys.argv[1] == '--directory':
-                file_name = path.replace('/files/', '')
-                file_path = os.path.join(sys.argv[2], file_name)
-                if os.path.exists(file_path):
-                    with open(file_path, 'r') as file:
-                        file_content = file.read()
-                        connection.send(get_streaming_header(file_content))
-                else:
-                    connection.sendall(b"HTTP/1.1 404 Not Found\r\n\r\n")
-            else:
-                connection.send(ERROR_RESP)
+            handle_get_request(path, headers, connection)
         elif request_method.upper() == "POST":
-            if path.startswith('/files/') and \
-                    sys.argv[1] == '--directory' and \
-                    headers['content-type'] == "application/octet-stream" and \
-                    headers['content-length'] is not None:
-                file_name = path.replace('/files/', '')
-                full_path = os.path.join(sys.argv[2], file_name)
-                create_directory("".join(full_path.split('/')[:-1]))
-
-                with open(full_path, 'w') as file:
-                    file.write(body)
-                    connection.send(b'HTTP/1.1 201 Created\r\n\r\n')
-
+            handle_post_request(path, headers, body, connection)
         else:
             connection.send(ERROR_RESP)
-        # Closing the connection
+
         connection.close()
 
 
